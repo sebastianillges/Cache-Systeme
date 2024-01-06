@@ -7,6 +7,8 @@ use serde::de::Error;
 use serde_json::{Value, error::Error as SerdeError};
 use rand::Rng;
 use colored::*;
+use plotters::prelude::*;
+use plotters::style::Color;
 
 struct DatenQuelleCache {
     cache: Cache<String, String>,
@@ -19,10 +21,22 @@ struct DatenQuelleCache {
 fn main() {
     let file_path = "telefonbuch.json";
 
-    test_cache_random(500, 1000, file_path);
+   /* test_cache_random(500, 1000, file_path);
     test_cache_80_20(500, 1000, file_path);
-    test_without_cache_random(1000, file_path);
+    test_without_cache_random(1000, file_path); */
+    let iteration_values = [1, 10, 100, 1000];
+    let mut times_cache = Vec::new();
+    let mut times_json = Vec::new();
+    for &iterations in &iteration_values {
+        let (time_cache, time_json) = test_SameValue(100, 1000, iterations, file_path);
+        times_cache.push(time_cache);
+        times_json.push(time_json);
+    }
+    //plot_results(&iteration_values, &times_cache, &times_json, "SameValue.png");
+    
 }
+
+
 
 fn test_cache_80_20(cache_size: usize, num_keys: i32, file_path: &str) {
     let start = Instant::now();
@@ -39,6 +53,27 @@ fn test_cache_80_20(cache_size: usize, num_keys: i32, file_path: &str) {
     }
     let total_time = start.elapsed();
     println!("Total time: {:?}", total_time);
+}
+
+fn test_SameValue(cache_size: usize, num_keys: i32, iterations: i32, file_path: &str) -> (Duration, Duration) {
+   
+    let mut cache = DatenQuelleCache::new(cache_size, Duration::from_secs(30));
+    cache.abrufen("1", file_path);
+    let start = Instant::now();
+    for _i in 0..(iterations -1) {
+        cache.abrufen("1", file_path);
+    }
+    let total_time = start.elapsed();
+
+    let startJSON = Instant::now();
+    for _i in 0..(iterations -1) {
+        wert_aus_json_abrufen("1", file_path);
+    }
+    let total_timeJSON = startJSON.elapsed();
+
+    println!("Total time: {:?}", total_time);
+    println!("Total time: {:?}", total_timeJSON);
+    (total_time, total_timeJSON)
 }
 
 fn test_without_cache_random(num_keys: i32, file_path: &str) {
