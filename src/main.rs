@@ -21,9 +21,9 @@ struct DatenQuelleCache {
 fn main() {
     let file_path = "telefonbuch.json";
 
-   /* test_cache_random(500, 1000, file_path);
+    test_cache_random(500, 1000, file_path);
     test_cache_80_20(500, 1000, file_path);
-    test_without_cache_random(1000, file_path); */
+    test_without_cache_random(1000, file_path); 
     let iteration_values = [1, 10, 100, 1000];
     let mut times_cache = Vec::new();
     let mut times_json = Vec::new();
@@ -35,8 +35,52 @@ fn main() {
     //plot_results(&iteration_values, &times_cache, &times_json, "SameValue.png");
     
 }
+/*
+fn plot_results(
+    iteration_values: &[i32], 
+    times_cache: &[Duration], 
+    times_json: &[Duration],
+    output_file: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root_area = BitMapBackend::new(output_file, (640, 480)).into_drawing_area();
+    root_area.fill(&WHITE)?;
 
+    let max_time = times_cache.iter().chain(times_json.iter()).map(|d| d.as_micros()).max().unwrap();
 
+    let mut chart = ChartBuilder::on(&root_area)
+        .caption("Performance Comparison", ("sans-serif", 40).into_font())
+        .x_label_area_size(30)
+        .y_label_area_size(40)
+        .build_cartesian_2d(
+            0..iteration_values.len() as i32, 
+            0u128..max_time
+        )?;
+
+    chart.configure_mesh().draw()?;
+
+    chart.draw_series(
+        iteration_values.iter().enumerate().map(|(idx, _)| {
+            let cache_time = times_cache[idx].as_micros() as i32;
+            let json_time = times_json[idx].as_micros() as i32;
+
+            let bar_width = 15;
+            vec![
+                Rectangle::new(
+                    [(idx as i32 * 2, 0), (idx as i32 * 2 + bar_width, cache_time)],
+                    RED.filled(),
+                ),
+                Rectangle::new(
+                    [(idx as i32 * 2 + bar_width, 0), (idx as i32 * 2 + bar_width * 2, json_time)],
+                    BLUE.filled(),
+                ),
+            ]
+        })
+        .flatten(),
+    )?;
+
+    root_area.present()?;
+    Ok(())
+}*/
 
 fn test_cache_80_20(cache_size: usize, num_keys: i32, file_path: &str) {
     let start = Instant::now();
