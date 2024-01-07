@@ -25,7 +25,7 @@ fn main() {
     let num_accesses = 4 * num_json_keys;
     let num_measurements = 3;
 
-    // generate options.json so that plot.py knows the parameter of the tests
+    // generate options.json so that plot.py knows the parameters of the tests
     let options_json = json!({
         "options": {
             "num_json_keys": num_json_keys,
@@ -64,13 +64,14 @@ fn main() {
     let tests: [fn(usize, i32, &str, i32) -> (&str, Duration); 2] = [test_same_value_cache, test_same_value];
     let accesses_array = generate_doubling_array(64, num_accesses * 4);
     for &test in &tests {
-        for access in &accesses_array {
+        for &access in &accesses_array {
             println!("{}", access);
             for i in 0..num_measurements {
                 println!("{}", i);
-                let data = test((num_json_keys / 2) as usize, 0, data_path, num_accesses);
+                let data = test((num_json_keys / 2) as usize, 0, data_path, access as i32);
                 let test_name = data.0;
                 let result = data.1.as_micros().to_string();
+                println!("{}", result);
 
                 if results_json["numberofaccesses"][test_name][access.to_string()].is_null() {
                     results_json["numberofaccesses"][test_name][access.to_string()] = Value::Array(Vec::new());
@@ -213,7 +214,6 @@ impl Cache_impl {
         match self.get(key) {
             Some(value) => {
                 let duration = start.elapsed();
-                // println!("{}", format!("Cache-Hit[{}]: {} {:?}", key, value, duration).green());
                 self.hits += 1;
                 value.parse().unwrap_or(0)
             },
@@ -221,8 +221,6 @@ impl Cache_impl {
                 match get_from_json(key, file_path) {
                     Ok(value) => {
                         self.set(key.to_string(), value.to_string());
-                        let duration = start.elapsed();
-                        // println!("{}", format!("Cache-Miss[{}]: {} {:?}", key, value, duration).red());
                         self.misses += 1;
                         value
                     },
