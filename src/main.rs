@@ -18,44 +18,74 @@ struct Cache_impl {
 
 
 fn main() {
-    let mut json_object = json!({"cache": Null, "noncache": Null});
-    let file_path = "telefonbuch.json";
-    let json_num_keys = 1000;
+    let mut results_json = json!({"cachesize": Null, "numberofaccesses": Null});
+    let data_path = "telefonbuch.json";
 
-    let cache_tests: [fn(usize, i32, &str, i32) -> (&str, Duration); 3] = [test_random_cache, test_80_20_cache, test_same_value_cache];
-    let non_cache_tests: [fn(i32, &str, i32) -> (&str, Duration); 3] = [test_random, test_80_20, test_same_value];
-    let cache_size = [16, 32, 64, 128, 256, 512, 1024];
-    let iterations = 1000;
+    let num_json_keys = 512; // number of existing data, has to be 2^x, current max 1024
+    let num_accesses = 4 * num_json_keys;
+    let num_measurements = 3;
+
+    // generate options.json so that plot.py knows the parameter of the tests
+    let options_json = json!({
+        "options": {
+            "num_json_keys": num_json_keys,
+            "num_accesses": num_accesses,
+            "num_measurements": num_measurements
+        }
+    });
+    let json_string = serde_json::to_string_pretty(&options_json).expect("Failed to serialize JSON");
+    fs::write("options.json", json_string).expect("TODO: panic message");
 
 
-    // generate json for cache tests
-    for &size in &cache_size {
+    // generate json for cache tests (x: cache size, y: time)
+    let tests: [fn(usize, i32, &str, i32) -> (&str, Duration); 2] = [test_random_cache, test_80_20_cache];
+    let cache_sizes = generate_doubling_array(16, num_json_keys);
+    for &size in &cache_sizes {
         println!("{}", size);
-        for &test in &cache_tests {
-            let data = test(size, json_num_keys, file_path, iterations);
-            let test_name = data.0;
-            let result = data.1.as_micros().to_string();
 
-            if json_object["cache"][test_name].is_null() {
-                json_object["cache"][test_name] = Value::Array(Vec::new());
-            }
+        for &test in &tests {
+            for _ in 0..num_measurements {
+                let data = test(size, num_json_keys, data_path, num_accesses);
+                let test_name = data.0;
+                let result = (data.1 / num_accesses as u32).as_micros().to_string();
 
-            if let Some(array) = json_object["cache"][test_name].as_array_mut() {
-                let mut size_result = serde_json::Map::new();
-                size_result.insert(size.to_string(), Value::String(result));
-                array.push(Value::Object(size_result));
+                if results_json["cachesize"][test_name][size.to_string()].is_null() {
+                    results_json["cachesize"][test_name][size.to_string()] = Value::Array(Vec::new());
+                }
+
+                if let Some(array) = results_json["cachesize"][test_name][size.to_string()].as_array_mut() {
+                    array.push(Value::String(result));
+                }
             }
         }
     }
 
-    // generate json for NON cache tests, expected to have the same performance since every access is to the json
-    for &test in &non_cache_tests {
-        let data = test(json_num_keys, file_path, iterations);
-        json_object["noncache"][data.0] = json!(data.1.as_micros().to_string());
-    }
-    println!("{}", json_object);
+    // generate json for cache vs no cache (x: number of accesses, y = time)
+    let tests: [fn(usize, i32, &str, i32) -> (&str, Duration); 2] = [test_same_value_cache, test_same_value];
+    let accesses_array = generate_doubling_array(64, num_accesses * 4);
+    for &test in &tests {
+        for access in &accesses_array {
+            println!("{}", access);
+            for i in 0..num_measurements {
+                println!("{}", i);
+                let data = test((num_json_keys / 2) as usize, 0, data_path, num_accesses);
+                let test_name = data.0;
+                let result = data.1.as_micros().to_string();
 
-    let json_string = serde_json::to_string_pretty(&json_object).expect("Failed to serialize JSON");
+                if results_json["numberofaccesses"][test_name][access.to_string()].is_null() {
+                    results_json["numberofaccesses"][test_name][access.to_string()] = Value::Array(Vec::new());
+                }
+
+                if let Some(array) = results_json["numberofaccesses"][test_name][access.to_string()].as_array_mut() {
+                    array.push(Value::String(result));
+                }
+            }
+        }
+    }
+    println!("{}", results_json);
+
+
+    let json_string = serde_json::to_string_pretty(&results_json).expect("Failed to serialize JSON");
     fs::write("output.json", json_string).expect("TODO: panic message");
 }
 
@@ -63,12 +93,11 @@ fn test_random_cache(cache_size: usize, num_keys: i32, file_path: &str, iteratio
     let name = "random";
     let start = Instant::now();
     let mut cache = Cache_impl::new(cache_size, Duration::from_secs(30));
-    for _i in 1..iterations {
+    for _ in 1..iterations {
         let rand_num = rand::thread_rng().gen_range(1..num_keys).to_string();
         let _ = cache.abrufen(&rand_num, file_path);
     }
     let total_time = start.elapsed();
-    //println!("Total time: {:?}", total_time);
     (name, total_time)
 }
 
@@ -87,36 +116,34 @@ fn test_80_20_cache(cache_size: usize, num_keys: i32, file_path: &str, iteration
         let _ = cache.abrufen(&rand_area.to_string(), file_path);
     }
     let total_time = start.elapsed();
-    //println!("Total time: {:?}", total_time);
     (name, total_time)
 }
 
 fn test_same_value_cache(cache_size: usize, num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duration) {
     let mut cache = Cache_impl::new(cache_size, Duration::from_secs(30));
     let name = "same_value";
+    cache.abrufen("1", file_path);
     let start = Instant::now();
     for _i in 1..iterations {
         cache.abrufen("1", file_path);
     }
     let total_time = start.elapsed();
-    //println!("Total time: {:?}", total_time);
     (name, total_time)
 }
 
 fn test_random(num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duration) {
-    let name = "random";
+    let name = "random_no_cache";
     let start = Instant::now();
     for _i in 1..iterations {
         let rand_num = rand::thread_rng().gen_range(1..num_keys).to_string();
         let _ = get_from_json(&rand_num, file_path);
     }
     let total_time = start.elapsed();
-    //println!("Total time: {:?}", total_time);
     (name, total_time)
 }
 
 fn test_80_20(num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duration) {
-    let name = "80-20";
+    let name = "80-20_no_cache";
     let start = Instant::now();
     for _i in 1..iterations {
         let rand_num = rand::thread_rng().gen_range(1..10);
@@ -129,19 +156,17 @@ fn test_80_20(num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duratio
         let _ = get_from_json(&rand_area.to_string(), file_path);
     }
     let total_time = start.elapsed();
-    //println!("Total time: {:?}", total_time);
     (name, total_time)
 }
 
 
-fn test_same_value(num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duration) {
-    let name = "same_value";
+fn test_same_value(cache_size: usize, num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duration) {
+    let name = "same_value_no_cache";
     let start = Instant::now();
     for _i in 1..iterations {
         let _ = get_from_json("1", file_path);
     }
     let total_time = start.elapsed();
-    //println!("Total time: {:?}", total_time);
     (name, total_time)
 }
 
@@ -211,3 +236,14 @@ impl Cache_impl {
     }
 }
 
+fn generate_doubling_array(min_value: usize, max_value: i32) -> Vec<usize> {
+    let mut array = Vec::new();
+    let mut current = min_value;
+    let max_value = max_value as usize;
+
+    while current <= max_value {
+        array.push(current);
+        current *= 2;
+    }
+    array
+}
