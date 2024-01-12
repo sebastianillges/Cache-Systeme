@@ -4,6 +4,7 @@ use std::fs;
 use std::os::unix::raw::ino_t;
 use std::ptr::null;
 use std::slice::IterMut;
+use moka::Policy;
 use serde::de::Error;
 use serde_json::{Value, error::Error as SerdeError, json};
 use rand::Rng;
@@ -18,7 +19,7 @@ struct Cache_impl {
 
 
 fn main() {
-    let mut results_json = json!({"cachesize": Null, "numberofaccesses": Null});
+    let mut results_json = json!({"cachesize": Null, "numberofaccesses": Null, "hitmiss": Null});
     let data_path = "telefonbuch.json";
 
     let num_json_keys = 512; // number of existing data, has to be 2^x, current max 1024
@@ -83,6 +84,24 @@ fn main() {
             }
         }
     }
+
+    // Hit-Miss-Rate (x: cache size, y = Hit-Miss-Rate)
+    let tests: [fn(usize, i32, &str, i32) -> (&str, f32); 2] = [test_random_cache_hit_miss, test_80_20_cache_hit_miss];
+    let cache_sizes = generate_doubling_array(16, num_json_keys);
+    for &size in &cache_sizes {
+        println!("{}", size);
+        for &test in &tests {
+            let data = test(size, num_json_keys, data_path, num_accesses);
+            let test_name = data.0;
+            let result = data.1;
+
+            if results_json["hitmiss"][test_name][size.to_string()].is_null() {
+                results_json["hitmiss"][test_name][size.to_string()] = Value::from(result);
+            }
+        }
+    }
+
+
     println!("{}", results_json);
 
 
@@ -91,19 +110,19 @@ fn main() {
 }
 
 fn test_random_cache(cache_size: usize, num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duration) {
-    let name = "random";
+    let name = "random_cache";
     let start = Instant::now();
     let mut cache = Cache_impl::new(cache_size, Duration::from_secs(30));
     for _ in 1..iterations {
         let rand_num = rand::thread_rng().gen_range(1..num_keys).to_string();
-        let _ = cache.abrufen(&rand_num, file_path);
+        let _ = cache.search(&rand_num, file_path);
     }
     let total_time = start.elapsed();
     (name, total_time)
 }
 
 fn test_80_20_cache(cache_size: usize, num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duration) {
-    let name = "80-20";
+    let name = "80-20_cache";
     let start = Instant::now();
     let mut cache = Cache_impl::new(cache_size, Duration::from_secs(30));
     for _i in 1..iterations {
@@ -114,26 +133,54 @@ fn test_80_20_cache(cache_size: usize, num_keys: i32, file_path: &str, iteration
         } else {
             rand_area = rand::thread_rng().gen_range((num_keys as f32 * 0.8) as i32..num_keys);
         }
-        let _ = cache.abrufen(&rand_area.to_string(), file_path);
+        let _ = cache.search(&rand_area.to_string(), file_path);
     }
     let total_time = start.elapsed();
     (name, total_time)
 }
 
+fn test_random_cache_hit_miss(cache_size: usize, num_keys: i32, file_path: &str, iterations: i32) -> (&str, f32) {
+    let name = "test_random_cache_hit_miss";
+    let mut cache = Cache_impl::new(cache_size, Duration::from_secs(30));
+    for _ in 1..iterations {
+        let rand_num = rand::thread_rng().gen_range(1..num_keys).to_string();
+        let _ = cache.search(&rand_num, file_path);
+    }
+    println!("{}:{}", cache.hits, cache.misses);
+    (name, (cache.hits / cache.misses) as f32)
+}
+
+fn test_80_20_cache_hit_miss(cache_size: usize, num_keys: i32, file_path: &str, iterations: i32) -> (&str, f32) {
+    let name = "80-20-test_80_20_cache_hit_miss";
+    let mut cache = Cache_impl::new(cache_size, Duration::from_secs(30));
+    for _i in 1..iterations {
+        let rand_num = rand::thread_rng().gen_range(1..10);
+        let mut rand_area = 0;
+        if rand_num < 3 {
+            rand_area = rand::thread_rng().gen_range(1..(num_keys as f32 * 0.8) as i32);
+        } else {
+            rand_area = rand::thread_rng().gen_range((num_keys as f32 * 0.8) as i32..num_keys);
+        }
+        let _ = cache.search(&rand_area.to_string(), file_path);
+    }
+    println!("{}:{}", cache.hits, cache.misses);
+    (name, (cache.hits / cache.misses) as f32)
+}
+
 fn test_same_value_cache(cache_size: usize, num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duration) {
     let mut cache = Cache_impl::new(cache_size, Duration::from_secs(30));
-    let name = "same_value";
-    cache.abrufen("1", file_path);
+    let name = "same_value_cache";
+    cache.search("1", file_path);
     let start = Instant::now();
     for _i in 1..iterations {
-        cache.abrufen("1", file_path);
+        cache.search("1", file_path);
     }
     let total_time = start.elapsed();
     (name, total_time)
 }
 
 fn test_random(num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duration) {
-    let name = "random_no_cache";
+    let name = "random";
     let start = Instant::now();
     for _i in 1..iterations {
         let rand_num = rand::thread_rng().gen_range(1..num_keys).to_string();
@@ -144,7 +191,7 @@ fn test_random(num_keys: i32, file_path: &str, iterations: i32) -> (&str, Durati
 }
 
 fn test_80_20(num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duration) {
-    let name = "80-20_no_cache";
+    let name = "80-20";
     let start = Instant::now();
     for _i in 1..iterations {
         let rand_num = rand::thread_rng().gen_range(1..10);
@@ -162,7 +209,7 @@ fn test_80_20(num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duratio
 
 
 fn test_same_value(cache_size: usize, num_keys: i32, file_path: &str, iterations: i32) -> (&str, Duration) {
-    let name = "same_value_no_cache";
+    let name = "same_value";
     let start = Instant::now();
     for _i in 1..iterations {
         let _ = get_from_json("1", file_path);
@@ -194,7 +241,7 @@ impl Cache_impl {
     fn new(max_capacity: usize, ttl: Duration) -> Cache_impl {
         Cache_impl {
             cache: Cache::builder()
-                .max_capacity(max_capacity as u64)//caching policy einstellen
+                .max_capacity(max_capacity as u64)
                 .time_to_live(ttl)
                 .build(),
             hits: 0,
@@ -209,11 +256,9 @@ impl Cache_impl {
     fn set(&self, key: String, value: String) {
         self.cache.insert(key, value);
     }
-    fn abrufen(&mut self, key: &str, file_path: &str) -> i32 {
-        let start = Instant::now();
+    fn search(&mut self, key: &str, file_path: &str) -> i32 {
         match self.get(key) {
             Some(value) => {
-                let duration = start.elapsed();
                 self.hits += 1;
                 value.parse().unwrap_or(0)
             },

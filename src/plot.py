@@ -30,10 +30,10 @@ with open("../output.json", 'r') as file:
             plot.title(f"{test}-test {option_array}", fontsize=9)
             plot.xlabel("Cache Size")
             plot.ylabel("Mean Time per access in µs")
-            plot.xticks(cache_sizes, cache_sizes)
+            plot.xticks(cache_sizes, cache_sizes, rotation=90, fontsize=8)
             plot.grid(True)
             # plot.text(x=cache_sizes[-1], y=mean_times[-1], s="End Point", fontsize=10, verticalalignment='bottom')
-            plot.savefig(f"../{test}-test_{option_array}.png", dpi=500)
+            plot.savefig(f"../{test}-test_{option_array}.png", dpi=1000)
             plot.show()
 
     num_accesses_results = data["numberofaccesses"]
@@ -54,8 +54,30 @@ with open("../output.json", 'r') as file:
             plot.title(f"{test}-test {option_array}", fontsize=9)
             plot.xlabel("Number of accesses")
             plot.ylabel("Total mean time in µs")
-            plot.xticks(cache_sizes, cache_sizes)
+            plot.xticks(cache_sizes, cache_sizes, rotation=90, fontsize=5)
             plot.grid(True)
             # plot.text(x=cache_sizes[-1], y=mean_times[-1], s="End Point", fontsize=10, verticalalignment='bottom')
-        plot.savefig(f"../{test}-test_{option_array}.png", dpi=500)
+        plot.savefig(f"../{test}-test_{option_array}.png", dpi=1000)
         plot.show()
+
+    hitmiss = data["hitmiss"]
+
+    if hitmiss:
+        for test, sizes in hitmiss.items():
+            cache_sizes = []
+            hitmissrates = []
+
+            for size in sorted(sizes.keys(), key=int):
+                cache_sizes.append(int(size))
+                hitmissrates.append(sizes[size])
+
+            # plot.figure()
+            plot.plot(cache_sizes, hitmissrates, marker='o')
+            plot.title(f"{test}-test {option_array}", fontsize=9)
+            plot.xlabel("Number of accesses")
+            plot.ylabel("Total mean time in µs")
+            plot.xticks(cache_sizes, cache_sizes, rotation=90, fontsize=5)
+            plot.grid(True)
+            # plot.text(x=cache_sizes[-1], y=mean_times[-1], s="End Point", fontsize=10, verticalalignment='bottom')
+            plot.savefig(f"../{test}-test_{option_array}.png", dpi=1000)
+            plot.show()

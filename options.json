@@ -1,7 +1,7 @@
 {
   "options": {
-    "num_accesses": 2048,
-    "num_json_keys": 512,
+    "num_accesses": 4096,
+    "num_json_keys": 1024,
     "num_measurements": 3
   }
 }
